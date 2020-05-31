@@ -159,6 +159,8 @@ class opts(object):
                              help='loss weight for keypoint heatmaps.')
     self.parser.add_argument('--off_weight', type=float, default=1,
                              help='loss weight for keypoint local offsets.')
+    self.parser.add_argument('--off_3d_weight', type=float, default=1,
+                             help='loss weight for 3d center offsets.')
     self.parser.add_argument('--wh_weight', type=float, default=0.1,
                              help='loss weight for bounding box size.')
     # multi_pose
@@ -186,6 +188,8 @@ class opts(object):
                              help='category specific bounding box size.')
     self.parser.add_argument('--not_reg_offset', action='store_true',
                              help='not regress local offset.')
+    self.parser.add_argument('--not_reg_3d_offset', action='store_true',
+                             help='not regress 3d center offset.')
     # exdet
     self.parser.add_argument('--agnostic_ex', action='store_true',
                              help='use category agnostic extreme points.')
@@ -239,6 +243,7 @@ class opts(object):
     opt.fix_res = not opt.keep_res
     print('Fix size testing.' if opt.fix_res else 'Keep resolution testing.')
     opt.reg_offset = not opt.not_reg_offset
+    opt.reg_3d_offset = not opt.not_reg_3d_offset
     opt.reg_bbox = not opt.not_reg_bbox
     opt.hm_hp = not opt.not_hm_hp
     opt.reg_hp_offset = (not opt.not_reg_hp_offset) and opt.hm_hp
@@ -311,7 +316,9 @@ class opts(object):
         opt.heads.update(
           {'wh': 2})
       if opt.reg_offset:
-        opt.heads.update({'reg': 2})
+          opt.heads.update({'reg': 2})
+      if opt.reg_3d_offset:
+          opt.heads.update({'reg_3d': 2})
     elif opt.task == 'ctdet':
       # assert opt.dataset in ['pascal', 'coco']
       opt.heads = {'hm': opt.num_classes,

@@ -29,7 +29,7 @@ def ddd_post_process_2d(dets, c, s, opt):
     top_preds = {}
     dets[i, :, :2] = transform_preds(
           dets[i, :, 0:2], c[i], s[i], (opt.output_w, opt.output_h))
-    classes = dets[i, :, -1]
+    classes = dets[i, :, -3]
     for j in range(opt.num_classes):
       inds = (classes == j)
       top_preds[j + 1] = np.concatenate([
@@ -38,11 +38,10 @@ def ddd_post_process_2d(dets, c, s, opt):
         get_pred_depth(dets[i, inds, 11:12]).astype(np.float32),
         dets[i, inds, 12:15].astype(np.float32)], axis=1)
       if include_wh:
-        top_preds[j + 1] = np.concatenate([
-          top_preds[j + 1],
-          transform_preds(
-            dets[i, inds, 15:17], c[i], s[i], (opt.output_w, opt.output_h))
-          .astype(np.float32)], axis=1)
+        top_preds[j + 1] = np.concatenate([top_preds[j + 1], transform_preds(
+          dets[i, inds, 15:17], c[i], s[i], (opt.output_w, opt.output_h)).astype(np.float32)], axis=1)
+        top_preds[j + 1] = np.concatenate([top_preds[j + 1], transform_preds(
+          dets[i, inds, 18:20], c[i], s[i], (opt.output_w, opt.output_h)).astype(np.float32)], axis=1)
     ret.append(top_preds)
   return ret
 
@@ -61,8 +60,12 @@ def ddd_post_process_3d(dets, calibs):
         depth = dets[i][cls_ind][j][4]
         dimensions = dets[i][cls_ind][j][5:8]
         wh = dets[i][cls_ind][j][8:10]
+        center3d = dets[i][cls_ind][j][10:12]
+        # print("*****************")
+        # print("center: ", center)
+        # print("center3d: ", center3d)
         locations, rotation_y = ddd2locrot(
-          center, alpha, dimensions, depth, calibs[0])
+          center3d, alpha, dimensions, depth, calibs[0])
         bbox = [center[0] - wh[0] / 2, center[1] - wh[1] / 2,
                 center[0] + wh[0] / 2, center[1] + wh[1] / 2]
         pred = [alpha] + bbox + dimensions.tolist() + \

@@ -62,11 +62,12 @@ class DddDetector(BaseDetector):
       output['dep'] = 1. / (output['dep'].sigmoid() + 1e-6) - 1.
       wh = output['wh'] if self.opt.reg_bbox else None
       reg = output['reg'] if self.opt.reg_offset else None
+      reg_3d = output['reg_3d'] if self.opt.reg_3d_offset else None
       torch.cuda.synchronize()
       forward_time = time.time()
       
       dets = ddd_decode(output['hm'], output['rot'], output['dep'],
-                          output['dim'], wh=wh, reg=reg, K=self.opt.K)
+                          output['dim'], wh=wh, reg=reg, reg_3d=reg_3d, K=self.opt.K)
     if return_time:
       return output, dets, forward_time
     else:

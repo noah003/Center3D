@@ -10,6 +10,7 @@ import json
 import cv2
 import os
 import math
+from utils.ddd_utils import project_to_image
 from utils.image import flip, color_aug
 from utils.image import get_affine_transform, affine_transform
 from utils.image import gaussian_radius, draw_umich_gaussian, draw_msra_gaussian
@@ -69,10 +70,12 @@ class DddDataset(data.Dataset):
       (num_classes, self.opt.output_h, self.opt.output_w), dtype=np.float32)
     wh = np.zeros((self.max_objs, 2), dtype=np.float32)
     reg = np.zeros((self.max_objs, 2), dtype=np.float32)
+    reg_3d = np.zeros((self.max_objs, 2), dtype=np.float32)
     dep = np.zeros((self.max_objs, 1), dtype=np.float32)
     rotbin = np.zeros((self.max_objs, 2), dtype=np.int64)
     rotres = np.zeros((self.max_objs, 2), dtype=np.float32)
     dim = np.zeros((self.max_objs, 3), dtype=np.float32)
+    location = np.zeros((self.max_objs, 3), dtype=np.float32)
     ind = np.zeros((self.max_objs), dtype=np.int64)
     reg_mask = np.zeros((self.max_objs), dtype=np.uint8)
     rot_mask = np.zeros((self.max_objs), dtype=np.uint8)
@@ -85,6 +88,16 @@ class DddDataset(data.Dataset):
     gt_det = []
     for k in range(num_objs):
       ann = anns[k]
+      # location and 3d center projected on the image
+      location_3d = ann['location']
+      location_homo = np.append(location_3d, 1)
+      center3d_on_img = np.dot(calib, location_homo)
+      center3d_on_img = np.array([center3d_on_img[0] / center3d_on_img[2], center3d_on_img[1] / center3d_on_img[2]])
+      center3d_on_img = affine_transform(center3d_on_img[:2], trans_output)
+      if center3d_on_img[0] < 0 or center3d_on_img[0] > width or \
+              center3d_on_img[1] < 0 or center3d_on_img[1] > height:
+        continue
+      # 2d box
       bbox = self._coco_box_to_bbox(ann['bbox'])
       cls_id = int(self.cat_ids[ann['category_id']])
       if cls_id <= -99:
@@ -97,6 +110,7 @@ class DddDataset(data.Dataset):
       bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.opt.output_h - 1)
       h, w = bbox[3] - bbox[1], bbox[2] - bbox[0]
       if h > 0 and w > 0:
+        wh[k] = 1. * w, 1. * h
         radius = gaussian_radius((h, w))
         radius = max(0, int(radius))
         ct = np.array(
@@ -115,7 +129,6 @@ class DddDataset(data.Dataset):
           continue
         draw_gaussian(hm[cls_id], ct, radius)
 
-        wh[k] = 1. * w, 1. * h
         gt_det.append([ct[0], ct[1], 1] + \
                       self._alpha_to_8(self._convert_alpha(ann['alpha'])) + \
                       [ann['depth']] + (np.array(ann['dim']) / 1).tolist() + [cls_id])
@@ -131,9 +144,12 @@ class DddDataset(data.Dataset):
           if alpha > -np.pi / 6. or alpha < -5 * np.pi / 6.:
             rotbin[k, 1] = 1
             rotres[k, 1] = alpha - (0.5 * np.pi)
+          reg_3d[k] = center3d_on_img - ct
+          location[k] = location_3d
+          # print("***location: ", location[k], "  center: ", ct, "  center3d: ", center3d_on_img, "  reg_3d: ",
+          #       reg_3d[k], "***")
           dep[k] = ann['depth']
           dim[k] = ann['dim']
-          # print('        cat dim', cls_id, dim[k])
           ind[k] = ct_int[1] * self.opt.output_w + ct_int[0]
           reg[k] = ct - ct_int
           reg_mask[k] = 1 if not aug else 0
@@ -147,6 +163,8 @@ class DddDataset(data.Dataset):
       ret.update({'wh': wh})
     if self.opt.reg_offset:
       ret.update({'reg': reg})
+    if self.opt.reg_3d_offset:
+      ret.update({'reg_3d': reg_3d})
     if self.opt.debug > 0 or not ('train' in self.split):
       gt_det = np.array(gt_det, dtype=np.float32) if len(gt_det) > 0 else \
                np.zeros((1, 18), dtype=np.float32)

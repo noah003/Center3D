@@ -25,7 +25,7 @@ class DddLoss(torch.nn.Module):
     opt = self.opt
 
     hm_loss, dep_loss, rot_loss, dim_loss = 0, 0, 0, 0
-    wh_loss, off_loss = 0, 0
+    wh_loss, off_loss, off_3d_loss = 0, 0, 0
     for s in range(opt.num_stacks):
       output = outputs[s]
       output['hm'] = _sigmoid(output['hm'])
@@ -54,13 +54,17 @@ class DddLoss(torch.nn.Module):
       if opt.reg_offset and opt.off_weight > 0:
         off_loss += self.crit_reg(output['reg'], batch['rot_mask'],
                                   batch['ind'], batch['reg']) / opt.num_stacks
+      if opt.reg_3d_offset and opt.off_3d_weight > 0:
+        off_3d_loss += self.crit_reg(output['reg_3d'], batch['rot_mask'],
+                                  batch['ind'], batch['reg_3d']) / opt.num_stacks
     loss = opt.hm_weight * hm_loss + opt.dep_weight * dep_loss + \
            opt.dim_weight * dim_loss + opt.rot_weight * rot_loss + \
-           opt.wh_weight * wh_loss + opt.off_weight * off_loss
+           opt.wh_weight * wh_loss + opt.off_weight * off_loss + \
+           opt.off_3d_weight * off_3d_loss
 
     loss_stats = {'loss': loss, 'hm_loss': hm_loss, 'dep_loss': dep_loss, 
                   'dim_loss': dim_loss, 'rot_loss': rot_loss, 
-                  'wh_loss': wh_loss, 'off_loss': off_loss}
+                  'wh_loss': wh_loss, 'off_loss': off_loss, 'off_3d_loss': off_3d_loss}
     return loss, loss_stats
 
 class DddTrainer(BaseTrainer):
@@ -69,7 +73,7 @@ class DddTrainer(BaseTrainer):
   
   def _get_losses(self, opt):
     loss_states = ['loss', 'hm_loss', 'dep_loss', 'dim_loss', 'rot_loss', 
-                   'wh_loss', 'off_loss']
+                   'wh_loss', 'off_loss', 'off_3d_loss']
     loss = DddLoss(opt)
     return loss_states, loss
 
@@ -77,8 +81,9 @@ class DddTrainer(BaseTrainer):
       opt = self.opt
       wh = output['wh'] if opt.reg_bbox else None
       reg = output['reg'] if opt.reg_offset else None
+      reg_3d = output['reg_3d'] if opt.reg_3d_offset else None
       dets = ddd_decode(output['hm'], output['rot'], output['dep'],
-                          output['dim'], wh=wh, reg=reg, K=opt.K)
+                          output['dim'], wh=wh, reg=reg, reg_3d=reg_3d, K=opt.K)
 
       # x, y, score, r1-r8, depth, dim1-dim3, cls
       dets = dets.detach().cpu().numpy().reshape(1, -1, dets.shape[2])
@@ -138,8 +143,9 @@ class DddTrainer(BaseTrainer):
     opt = self.opt
     wh = output['wh'] if opt.reg_bbox else None
     reg = output['reg'] if opt.reg_offset else None
+    reg_3d = output['reg_3d'] if opt.reg_3d_offset else None
     dets = ddd_decode(output['hm'], output['rot'], output['dep'],
-                        output['dim'], wh=wh, reg=reg, K=opt.K)
+                        output['dim'], wh=wh, reg=reg, reg_3d=reg_3d, K=opt.K)
 
     # x, y, score, r1-r8, depth, dim1-dim3, cls
     dets = dets.detach().cpu().numpy().reshape(1, -1, dets.shape[2])
