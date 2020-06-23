@@ -103,10 +103,11 @@ def rot_y2alpha(rot_y, x, cx, fx):
     return alpha
 
 
-def ddd2locrot(center, alpha, dim, depth, calib):
+def ddd2locrot(center, alpha, dim, depth, calib, opt):
   # single image
   locations = unproject_2d_to_3d(center, depth, calib)
-  #locations[1] += dim[0] / 2
+  if opt.not_reg_3d_offset:
+    locations[1] += dim[0] / 2
   rotation_y = alpha2rot_y(alpha, center[0], calib[0, 2], calib[0, 0])
   return locations, rotation_y
 

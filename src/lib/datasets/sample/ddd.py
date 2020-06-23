@@ -13,7 +13,7 @@ import math
 from utils.ddd_utils import project_to_image
 from utils.image import flip, color_aug
 from utils.image import get_affine_transform, affine_transform
-from utils.image import gaussian_radius, draw_umich_gaussian, draw_msra_gaussian
+from utils.image import gaussian_radius, draw_umich_gaussian, draw_msra_gaussian, draw_rectangle
 import pycocotools.coco as coco
 
 class DddDataset(data.Dataset):
@@ -30,6 +30,7 @@ class DddDataset(data.Dataset):
     img_info = self.coco.loadImgs(ids=[img_id])[0]
     img_path = os.path.join(self.img_dir, img_info['file_name'])
     img = cv2.imread(img_path)
+    # cv2.imshow("img", img)
     if 'calib' in img_info:
       calib = np.array(img_info['calib'], dtype=np.float32)
     else:
@@ -79,6 +80,8 @@ class DddDataset(data.Dataset):
     ind = np.zeros((self.max_objs), dtype=np.int64)
     reg_mask = np.zeros((self.max_objs), dtype=np.uint8)
     rot_mask = np.zeros((self.max_objs), dtype=np.uint8)
+    ra_dep = np.zeros((1, self.opt.output_h, self.opt.output_w), dtype=np.float32)
+    ra_dep_info = []
 
     ann_ids = self.coco.getAnnIds(imgIds=[img_id])
     anns = self.coco.loadAnns(ids=ann_ids)
@@ -129,6 +132,9 @@ class DddDataset(data.Dataset):
           continue
         draw_gaussian(hm[cls_id], ct, radius)
 
+        if self.opt.ra_dep:
+          ra_dep_info.append({'ct': ct, 'depth': ann['depth'], 'hw': (h, w)})
+
         gt_det.append([ct[0], ct[1], 1] + \
                       self._alpha_to_8(self._convert_alpha(ann['alpha'])) + \
                       [ann['depth']] + (np.array(ann['dim']) / 1).tolist() + [cls_id])
@@ -156,6 +162,11 @@ class DddDataset(data.Dataset):
           rot_mask[k] = 1
     # print('gt_det', gt_det)
     # print('')
+    if self.opt.ra_dep:
+      ra_dep_info.sort(key=lambda dict:dict['depth'], reverse=True)
+      for dict in ra_dep_info:
+        draw_rectangle(ra_dep[0], dict['ct'], dict['depth'], dict['hw'], self.opt.ra_dep_scale)
+
     ret = {'input': inp, 'hm': hm, 'dep': dep, 'dim': dim, 'ind': ind, 
            'rotbin': rotbin, 'rotres': rotres, 'reg_mask': reg_mask,
            'rot_mask': rot_mask}
@@ -165,6 +176,8 @@ class DddDataset(data.Dataset):
       ret.update({'reg': reg})
     if self.opt.reg_3d_offset:
       ret.update({'reg_3d': reg_3d})
+    if self.opt.ra_dep:
+      ret.update({'ra_dep': ra_dep})
     if self.opt.debug > 0 or not ('train' in self.split):
       gt_det = np.array(gt_det, dtype=np.float32) if len(gt_det) > 0 else \
                np.zeros((1, 18), dtype=np.float32)

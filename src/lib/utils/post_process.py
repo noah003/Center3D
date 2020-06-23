@@ -45,7 +45,7 @@ def ddd_post_process_2d(dets, c, s, opt):
     ret.append(top_preds)
   return ret
 
-def ddd_post_process_3d(dets, calibs):
+def ddd_post_process_3d(dets, calibs, opt):
   # dets: batch x max_dets x dim
   # return 1-based class det list
   ret = []
@@ -60,12 +60,10 @@ def ddd_post_process_3d(dets, calibs):
         depth = dets[i][cls_ind][j][4]
         dimensions = dets[i][cls_ind][j][5:8]
         wh = dets[i][cls_ind][j][8:10]
+        #add by yanan.guo
         center3d = dets[i][cls_ind][j][10:12]
-        # print("*****************")
-        # print("center: ", center)
-        # print("center3d: ", center3d)
         locations, rotation_y = ddd2locrot(
-          center3d, alpha, dimensions, depth, calibs[0])
+          center3d, alpha, dimensions, depth, calibs[0], opt)
         bbox = [center[0] - wh[0] / 2, center[1] - wh[1] / 2,
                 center[0] + wh[0] / 2, center[1] + wh[1] / 2]
         pred = [alpha] + bbox + dimensions.tolist() + \
@@ -79,7 +77,7 @@ def ddd_post_process(dets, c, s, calibs, opt):
   # dets: batch x max_dets x dim
   # return 1-based class det list
   dets = ddd_post_process_2d(dets, c, s, opt)
-  dets = ddd_post_process_3d(dets, calibs)
+  dets = ddd_post_process_3d(dets, calibs, opt)
   return dets
 
 
@@ -115,3 +113,4 @@ def multi_pose_post_process(dets, c, s, h, w):
        pts.reshape(-1, 34)], axis=1).astype(np.float32).tolist()
     ret.append({np.ones(1, dtype=np.int32)[0]: top_preds})
   return ret
+

@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import torch
 import torch.nn as nn
-from .utils import _gather_feat, _transpose_and_gather_feat
+from .utils import _gather_feat, _transpose_and_gather_feat, get_ra_value
 
 def _nms(heat, kernel=3):
     pad = (kernel - 1) // 2
@@ -423,8 +423,9 @@ def exct_decode(
 
     return detections
 
-def ddd_decode(heat, rot, depth, dim, wh=None, reg=None, reg_3d=None, K=40):
+def ddd_decode(heat, rot, depth, dim, opt, wh=None, reg=None, reg_3d=None):
     batch, cat, height, width = heat.size()
+    K = opt.K
     # heat = torch.sigmoid(heat)
     # perform nms on heatmaps
     heat = _nms(heat)
@@ -446,16 +447,17 @@ def ddd_decode(heat, rot, depth, dim, wh=None, reg=None, reg_3d=None, K=40):
     else:
       xs_3d = xs.view(batch, K, 1)
       ys_3d = ys.view(batch, K, 1)
-    #print("*************************")
-      #print("xy: ", xs, ", ", ys)
-    #print("reg: ", reg)
-    #print("reg3d: ", reg_3d)
-    # print("xy_3d", xs_3d, ", ", ys_3d)
 
     rot = _transpose_and_gather_feat(rot, inds)
     rot = rot.view(batch, K, 8)
-    depth = _transpose_and_gather_feat(depth, inds)
-    depth = depth.view(batch, K, 1)
+    if wh is not None:
+        wh = _transpose_and_gather_feat(wh, inds)
+        wh = wh.view(batch, K, 2)
+    if not opt.ra_dep and wh is not None:
+        depth = _transpose_and_gather_feat(depth, inds)
+        depth = depth.view(batch, K, 1)
+    else:
+        depth = get_ra_value(depth, wh, inds, opt.ra_dep_scale)
     dim = _transpose_and_gather_feat(dim, inds)
     dim = dim.view(batch, K, 3)
     clses  = clses.view(batch, K, 1).float()
@@ -464,8 +466,6 @@ def ddd_decode(heat, rot, depth, dim, wh=None, reg=None, reg_3d=None, K=40):
     ys = ys.view(batch, K, 1)
       
     if wh is not None:
-        wh = _transpose_and_gather_feat(wh, inds)
-        wh = wh.view(batch, K, 2)
         detections = torch.cat(
             [xs, ys, scores, rot, depth, dim, wh, clses, xs_3d, ys_3d], dim=2)
     else:
@@ -582,3 +582,4 @@ def multi_pose_decode(
   detections = torch.cat([bboxes, scores, kps, clses], dim=2)
     
   return detections
+

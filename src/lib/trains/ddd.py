@@ -4,8 +4,9 @@ from __future__ import print_function
 
 import torch
 import numpy as np
+import torch.nn.functional as F
 
-from models.losses import FocalLoss, L1Loss, BinRotLoss
+from models.losses import FocalLoss, L1Loss, BinRotLoss, RALoss
 from models.decode import ddd_decode
 from models.utils import _sigmoid
 from utils.debugger import Debugger
@@ -17,6 +18,7 @@ class DddLoss(torch.nn.Module):
   def __init__(self, opt):
     super(DddLoss, self).__init__()
     self.crit = torch.nn.MSELoss() if opt.mse_loss else FocalLoss()
+    self.crit_ra = RALoss()
     self.crit_reg = L1Loss()
     self.crit_rot = BinRotLoss()
     self.opt = opt
@@ -25,7 +27,7 @@ class DddLoss(torch.nn.Module):
     opt = self.opt
 
     hm_loss, dep_loss, rot_loss, dim_loss = 0, 0, 0, 0
-    wh_loss, off_loss, off_3d_loss = 0, 0, 0
+    wh_loss, off_loss, off_3d_loss, ra_dep_loss = 0, 0, 0, 0
     for s in range(opt.num_stacks):
       output = outputs[s]
       output['hm'] = _sigmoid(output['hm'])
@@ -38,7 +40,9 @@ class DddLoss(torch.nn.Module):
           opt.output_w, opt.output_h)).to(opt.device)
       
       hm_loss += self.crit(output['hm'], batch['hm']) / opt.num_stacks
-      if opt.dep_weight > 0:
+      if opt.ra_dep and opt.dep_weight > 0:
+        ra_dep_loss += self.crit_ra(output['dep'], batch['ra_dep'], batch['reg_mask']) / opt.num_stacks
+      elif opt.dep_weight > 0:
         dep_loss += self.crit_reg(output['dep'], batch['reg_mask'],
                                   batch['ind'], batch['dep']) / opt.num_stacks
       if opt.dim_weight > 0:
@@ -60,20 +64,32 @@ class DddLoss(torch.nn.Module):
     loss = opt.hm_weight * hm_loss + opt.dep_weight * dep_loss + \
            opt.dim_weight * dim_loss + opt.rot_weight * rot_loss + \
            opt.wh_weight * wh_loss + opt.off_weight * off_loss + \
-           opt.off_3d_weight * off_3d_loss
+           opt.off_3d_weight * off_3d_loss + opt.dep_weight * ra_dep_loss
 
-    loss_stats = {'loss': loss, 'hm_loss': hm_loss, 'dep_loss': dep_loss, 
+    loss_stats = {'loss': loss, 'hm_loss': hm_loss,
                   'dim_loss': dim_loss, 'rot_loss': rot_loss, 
-                  'wh_loss': wh_loss, 'off_loss': off_loss, 'off_3d_loss': off_3d_loss}
+                  'wh_loss': wh_loss, 'off_loss': off_loss}
+    # depth ra loss
+    if opt.ra_dep:
+      loss_stats.update({'ra_dep_loss': ra_dep_loss})
+    else:
+      loss_stats.update({'dep_loss': dep_loss})
+    # 3d offset loss
+    if opt.reg_3d_offset:
+      loss_stats.update({'off_3d_loss': off_3d_loss})
     return loss, loss_stats
-
 class DddTrainer(BaseTrainer):
   def __init__(self, opt, model, optimizer=None):
     super(DddTrainer, self).__init__(opt, model, optimizer=optimizer)
   
   def _get_losses(self, opt):
-    loss_states = ['loss', 'hm_loss', 'dep_loss', 'dim_loss', 'rot_loss', 
-                   'wh_loss', 'off_loss', 'off_3d_loss']
+    loss_states = ['loss', 'hm_loss', 'dim_loss', 'rot_loss', 'wh_loss', 'off_loss']
+    if opt.ra_dep:
+      loss_states.append('ra_dep_loss')
+    else:
+      loss_states.append('dep_loss')
+    if opt.reg_3d_offset:
+      loss_states.append('off_3d_loss')
     loss = DddLoss(opt)
     return loss_states, loss
 
@@ -83,7 +99,7 @@ class DddTrainer(BaseTrainer):
       reg = output['reg'] if opt.reg_offset else None
       reg_3d = output['reg_3d'] if opt.reg_3d_offset else None
       dets = ddd_decode(output['hm'], output['rot'], output['dep'],
-                          output['dim'], wh=wh, reg=reg, reg_3d=reg_3d, K=opt.K)
+                          output['dim'], opt, wh=wh, reg=reg, reg_3d=reg_3d)
 
       # x, y, score, r1-r8, depth, dim1-dim3, cls
       dets = dets.detach().cpu().numpy().reshape(1, -1, dets.shape[2])
@@ -100,8 +116,7 @@ class DddTrainer(BaseTrainer):
         batch['meta']['s'].detach().numpy(), calib, opt)
       #for i in range(input.size(0)):
       for i in range(1):
-        debugger = Debugger(dataset=opt.dataset, ipynb=(opt.debug==3),
-                            theme=opt.debugger_theme)
+        debugger = Debugger(self.opt, dataset=opt.dataset, ipynb=(opt.debug==3), theme=opt.debugger_theme)
         img = batch['input'][i].detach().cpu().numpy().transpose(1, 2, 0)
         img = ((img * self.opt.std + self.opt.mean) * 255.).astype(np.uint8)
         pred = debugger.gen_colormap(
@@ -145,7 +160,7 @@ class DddTrainer(BaseTrainer):
     reg = output['reg'] if opt.reg_offset else None
     reg_3d = output['reg_3d'] if opt.reg_3d_offset else None
     dets = ddd_decode(output['hm'], output['rot'], output['dep'],
-                        output['dim'], wh=wh, reg=reg, reg_3d=reg_3d, K=opt.K)
+                        output['dim'], opt, wh=wh, reg=reg, reg_3d=reg_3d)
 
     # x, y, score, r1-r8, depth, dim1-dim3, cls
     dets = dets.detach().cpu().numpy().reshape(1, -1, dets.shape[2])

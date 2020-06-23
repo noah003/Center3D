@@ -120,6 +120,24 @@ class FocalLoss(nn.Module):
   def forward(self, out, target):
     return self.neg_loss(out, target)
 
+class RALoss(nn.Module):
+  '''nn.Module warpper for ra loss'''
+  def __init__(self):
+    super(RALoss, self).__init__()
+
+  def forward(self, out, target, mask):
+    if mask.sum() == 0:
+      return 0
+    pos_mask = target.gt(0).float()
+    pos_num = pos_mask.sum().item()
+    neg_mask = target.eq(0).float()
+    neg_num = neg_mask.sum().item()
+
+    pos_loss = F.l1_loss(out*pos_mask, target, reduction='sum')/pos_num/50.
+    neg_loss = 0
+    loss = pos_loss + neg_loss
+    return loss
+
 class RegLoss(nn.Module):
   '''Regression loss for an output tensor
     Arguments:

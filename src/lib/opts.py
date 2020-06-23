@@ -159,10 +159,13 @@ class opts(object):
                              help='loss weight for keypoint heatmaps.')
     self.parser.add_argument('--off_weight', type=float, default=1,
                              help='loss weight for keypoint local offsets.')
-    self.parser.add_argument('--off_3d_weight', type=float, default=1,
-                             help='loss weight for 3d center offsets.')
     self.parser.add_argument('--wh_weight', type=float, default=0.1,
                              help='loss weight for bounding box size.')
+    # 3d det
+    self.parser.add_argument('--not_reg_3d_offset', action='store_true',
+                             help='not regress 3d center offset.')
+    self.parser.add_argument('--ra_dep', action='store_true',
+                             help='reference area on depth mentioned in Center3D.')
     # multi_pose
     self.parser.add_argument('--hp_weight', type=float, default=1,
                              help='loss weight for human pose offset.')
@@ -176,6 +179,11 @@ class opts(object):
     self.parser.add_argument('--rot_weight', type=float, default=1,
                              help='loss weight for orientation.')
     self.parser.add_argument('--peak_thresh', type=float, default=0.2)
+
+    self.parser.add_argument('--ra_dep_scale', type=float, default=0.2,
+                             help='the parameter lambda of depth ra mentioned in Center3D.')
+    self.parser.add_argument('--off_3d_weight', type=float, default=0.1,
+                             help='loss weight for 3d center offsets.')
     
     # task
     # ctdet
@@ -188,8 +196,6 @@ class opts(object):
                              help='category specific bounding box size.')
     self.parser.add_argument('--not_reg_offset', action='store_true',
                              help='not regress local offset.')
-    self.parser.add_argument('--not_reg_3d_offset', action='store_true',
-                             help='not regress 3d center offset.')
     # exdet
     self.parser.add_argument('--agnostic_ex', action='store_true',
                              help='use category agnostic extreme points.')

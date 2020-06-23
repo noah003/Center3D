@@ -12,6 +12,7 @@ from __future__ import print_function
 import numpy as np
 import cv2
 import random
+import math
 
 def flip(img):
   return img[:, :, ::-1].copy()  
@@ -194,6 +195,14 @@ def draw_msra_gaussian(heatmap, center, sigma):
     heatmap[img_y[0]:img_y[1], img_x[0]:img_x[1]],
     g[g_y[0]:g_y[1], g_x[0]:g_x[1]])
   return heatmap
+
+def draw_rectangle(ra, center, value, box_size, ra_scale):
+  x, y = int(center[0]), int(center[1])
+  ra_half_h, ra_half_w = (math.ceil(a*ra_scale/2.) for a in box_size)
+  ra[y - ra_half_h:y + ra_half_h + 1, x - ra_half_w:x + ra_half_w + 1] = value
+
+def sigmoid(x):
+  return 1 / (1 + math.exp(-x))
 
 def grayscale(image):
     return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
